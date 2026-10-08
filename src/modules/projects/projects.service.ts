@@ -1,9 +1,8 @@
 import {
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
   BadRequestException,
   ConflictException,
+  Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -16,10 +15,11 @@ import {
 } from './entities/project-member.entity.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { UpdateProjectDto } from './dto/update-project.dto.js';
-import { User, UserRole } from '../users/entities/user.entity.js';
 import { InviteMemberDto } from './dto/invite-member.dto.js';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto.js';
+import { User, UserRole } from '../users/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
+import { ProjectAccessService } from './project-access.service.js';
 
 @Injectable()
 export class ProjectsService {
@@ -29,9 +29,10 @@ export class ProjectsService {
     private readonly members: Repository<ProjectMember>,
     private readonly dataSource: DataSource,
     private readonly users: UsersService,
+    private readonly access: ProjectAccessService, // ← was private helpers
   ) {}
 
-  // ---- creation (atomic: project + owner membership) ----------------------
+  // ---- creation ----------------------------------------------------------
 
   async create(owner: User, dto: CreateProjectDto): Promise<Project> {
     return this.dataSource.transaction(async (tx) => {
@@ -51,7 +52,6 @@ export class ProjectsService {
         }),
       );
 
-      // reload with relations for a clean response
       return tx.getRepository(Project).findOneOrFail({
         where: { id: project.id },
         relations: { owner: true },
@@ -86,16 +86,11 @@ export class ProjectsService {
     });
     if (!project) throw new NotFoundException(`Project ${id} not found`);
 
-    if (user.role === UserRole.ADMIN) return project;
-
-    const membership = await this.getMembership(user.id, id);
-    if (!membership || membership.status !== ProjectMemberStatus.ACCEPTED) {
-      throw new ForbiddenException('You are not a member of this project');
-    }
+    await this.access.assertCanView(user, id);
     return project;
   }
 
-  // ---- mutations (owner or admin only) ------------------------------------
+  // ---- mutations ----------------------------------------------------------
 
   async update(
     user: User,
@@ -103,7 +98,7 @@ export class ProjectsService {
     dto: UpdateProjectDto,
   ): Promise<Project> {
     const project = await this.findOne(user, id);
-    this.assertCanManage(user, project);
+    this.access.assertCanManage(user, project.ownerId);
 
     Object.assign(project, dto);
     return this.projects.save(project);
@@ -111,18 +106,15 @@ export class ProjectsService {
 
   async remove(user: User, id: number): Promise<{ deleted: true }> {
     const project = await this.findOne(user, id);
-    this.assertCanManage(user, project);
+    this.access.assertCanManage(user, project.ownerId);
     await this.projects.remove(project);
     return { deleted: true };
   }
 
-  // ---- helpers reused by tasks / invitations later ------------------------
+  // ---- helpers still used elsewhere ---------------------------------------
 
-  getMembership(
-    userId: number,
-    projectId: number,
-  ): Promise<ProjectMember | null> {
-    return this.members.findOne({ where: { userId, projectId } });
+  getMembership(userId: number, projectId: number) {
+    return this.access.getMembership(userId, projectId);
   }
 
   async listMembers(projectId: number): Promise<ProjectMember[]> {
@@ -133,13 +125,7 @@ export class ProjectsService {
     });
   }
 
-  private assertCanManage(user: User, project: Project) {
-    if (user.role === UserRole.ADMIN) return;
-    if (project.ownerId === user.id) return;
-    throw new ForbiddenException('Only the project owner can do this');
-  }
-
-  // ---- invitations --------------------------------------------------------
+  // ---- invitations (unchanged behavior, delegating manage checks) ---------
 
   async invite(
     actor: User,
@@ -147,12 +133,11 @@ export class ProjectsService {
     dto: InviteMemberDto,
   ): Promise<ProjectMember> {
     const project = await this.findOne(actor, projectId);
-    this.assertCanManage(actor, project);
+    this.access.assertCanManage(actor, project.ownerId);
 
     const invitee = await this.users.findByEmail(dto.email);
     if (!invitee)
       throw new NotFoundException(`No user with email ${dto.email}`);
-
     if (invitee.id === project.ownerId) {
       throw new BadRequestException('Owner is already a member');
     }
@@ -174,7 +159,6 @@ export class ProjectsService {
         : ProjectMemberRole.VIEWER;
 
     if (existing) {
-      // previously rejected → re-invite
       existing.status = ProjectMemberStatus.PENDING;
       existing.role = role;
       return this.members.save(existing);
@@ -189,8 +173,6 @@ export class ProjectsService {
       }),
     );
   }
-
-  // ---- invitee actions -----------------------------------------------------
 
   async listMyInvitations(user: User): Promise<ProjectMember[]> {
     return this.members.find({
@@ -228,8 +210,6 @@ export class ProjectsService {
     return this.members.save(row);
   }
 
-  // ---- member management ---------------------------------------------------
-
   async updateMemberRole(
     actor: User,
     projectId: number,
@@ -237,7 +217,7 @@ export class ProjectsService {
     dto: UpdateMemberRoleDto,
   ): Promise<ProjectMember> {
     const project = await this.findOne(actor, projectId);
-    this.assertCanManage(actor, project);
+    this.access.assertCanManage(actor, project.ownerId);
 
     const row = await this.members.findOne({
       where: { id: memberId, projectId },
@@ -255,13 +235,9 @@ export class ProjectsService {
     return this.members.save(row);
   }
 
-  async removeMember(
-    actor: User,
-    projectId: number,
-    memberId: number,
-  ): Promise<{ deleted: true }> {
+  async removeMember(actor: User, projectId: number, memberId: number) {
     const project = await this.findOne(actor, projectId);
-    this.assertCanManage(actor, project);
+    this.access.assertCanManage(actor, project.ownerId);
 
     const row = await this.members.findOne({
       where: { id: memberId, projectId },

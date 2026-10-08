@@ -7,11 +7,12 @@ import { ProjectsService } from './projects.service.js';
 import { ProjectsController } from './projects.controller.js';
 import { UsersModule } from '../users/users.module.js';
 import { InvitationsController } from './invitations.controller.js';
+import { ProjectAccessService } from './project-access.service.js';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Project, ProjectMember]), UsersModule],
   controllers: [ProjectsController, InvitationsController],
-  providers: [ProjectsService],
-  exports: [ProjectsService, TypeOrmModule], // later modules need the entities + service
+  providers: [ProjectsService, ProjectAccessService],
+  exports: [ProjectsService, ProjectAccessService, TypeOrmModule],
 })
 export class ProjectsModule {}
