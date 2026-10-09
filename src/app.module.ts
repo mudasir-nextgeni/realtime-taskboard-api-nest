@@ -12,6 +12,7 @@ import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from './modules/auth/guards/roles.guard.js';
 import { ProjectsModule } from './modules/projects/projects.module.js';
 import { TasksModule } from './modules/tasks/tasks.module.js';
+import { ConversationsModule } from './modules/conversations/conversations.module.js';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { TasksModule } from './modules/tasks/tasks.module.js';
     AuthModule,
     ProjectsModule,
     TasksModule,
+    ConversationsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
