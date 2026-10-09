@@ -1,0 +1,40 @@
+<html>
+  <body
+    style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #222;"
+  >
+    <h2>⏰ Task deadline passed</h2>
+
+    <p>Hi {{recipientName}},</p>
+
+    <p>The task below was due at
+      <strong>{{deadline}}</strong>
+      and is still not marked done:</p>
+
+    <table style='border-collapse: collapse; margin: 12px 0;'>
+      <tr>
+        <td style='padding: 4px 12px 4px 0; color: #666;'>Project</td>
+        <td style='padding: 4px 0;'><strong>{{projectName}}</strong></td>
+      </tr>
+      <tr>
+        <td style='padding: 4px 12px 4px 0; color: #666;'>Task</td>
+        <td style='padding: 4px 0;'><strong>{{taskTitle}}</strong></td>
+      </tr>
+      <tr>
+        <td style='padding: 4px 12px 4px 0; color: #666;'>Status</td>
+        <td style='padding: 4px 0;'>{{taskStatus}}</td>
+      </tr>
+    </table>
+
+    {{#if taskDescription}}
+      <p style='color:#444;'>{{taskDescription}}</p>
+    {{/if}}
+
+    {{#if taskUrl}}
+      <p><a href='{{taskUrl}}' style='color:#2563eb;'>Open the task →</a></p>
+    {{/if}}
+
+    <p style='color:#888; font-size: 12px; margin-top: 24px;'>
+      You are receiving this because you are assigned to this task.
+    </p>
+  </body>
+</html>
